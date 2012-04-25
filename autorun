@@ -1,0 +1,111 @@
+#!/usr/bin/perl
+=pod
+Copyright (c) 8 December 2010, Andrew Gilbert
+All rights reserved.
+
+Redistribution and use in source and binary forms, with or without modification,
+are permitted provided that the following conditions are met:
+
+    * Redistributions of source code must retain the above copyright notice,
+      this list of conditions and the following disclaimer.
+    * Redistributions in binary form must reproduce the above copyright notice,
+      this list of conditions and the following disclaimer in the documentation
+      and/or other materials provided with the distribution.
+    * Neither the name of the author nor the names of its contributors
+      may be used to endorse or promote products derived from this software
+      without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
+ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
+IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT,
+INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
+NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
+PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGE.
+=head1 NAME
+autorun - run the cd's autorun program with wine, like Windows®
+=head1 SYNOPSIS
+autorun F<cd directory>
+
+=cut
+
+#Standard lines
+use strict;
+use warnings;
+our $debug = 0;
+
+#For testing purposes
+#use Data::Dumper;
+
+#chdir $ARGV[0] or die "Directory not available";
+
+#Check for any arguments and then for size of first arg
+(scalar @ARGV > 0 and length $ARGV[0] > 0) or die "Argument required\n";
+
+#Check that argument is a valid file (directories are files)
+(-e $ARGV[0]) or die "Directory does not exist.\n";
+
+#Try to open directory to get listing
+opendir DISK, $ARGV[0] or die "Directory not available.\n";
+
+#List contents of directory
+my @dircontents = readdir DISK;
+
+#Find the name of the autorun file
+#Search is to allow any case pattern to be opened
+#eg. AuToRuN.inF or AUTORUN.INF as well as autorun.inf
+my @autorun = grep m/autorun\.inf/i, @dircontents;
+
+#Make suer there is really a file called autorun.inf
+#Not an error if there isn't; plenty of CDs don't have an autorun
+(scalar @autorun > 0) or print "Nothing to autorun, exiting" and exit 0;
+
+
+my $autorun = $autorun[0];
+open AUTO, "$ARGV[0]/$autorun";
+my %inf;
+my $current_heading;
+while (<AUTO>) {
+SWITCH: {
+	if (/\[(.*?)\]/) { $current_heading = lc($1); last SWITCH; }
+	if (/(.*)=(.*)/) { $inf{$current_heading}{lc($1)} = lc($2); last SWITCH; }
+}
+}
+print "Dump of parse tree for inf...\n" if $debug;
+print Dumper(%inf) if $debug;
+if (exists $inf{"autorun"}) {
+if (exists $inf{"autorun"}{"open"}) {
+print qq{Found "open" item...\n};
+my $toopen = $inf{"autorun"}{"open"};
+
+chdir $ARGV[0];
+
+$toopen =~ m/\s*(\S*)\s*/;
+print "Running cleaned-up version...\n";
+{exec qq{cautious-launcher "$1" wine};}
+print "$!\n";
+
+print "Running raw cut...\n";
+{exec qq{cautious-launcher "$toopen" wine};}
+print "$!\n";
+}
+if (exists $inf{"autorun"}{"shellexecute"}) {
+print qq{Found "shellexecute" item...\n};
+my $toopen = $inf{"autorun"}{"shellexecute"};
+
+chdir $ARGV[0];
+
+$toopen =~ m/\s*(\S*)\s*/;
+print "Running cleaned-up version...\n";
+{exec qq{cautious-launcher "$1" wine start /unix};}
+print "$!\n";
+
+print "Running raw cut...\n";
+{exec qq{cautious-launcher "$toopen" wine start /unix};}
+print "$!\n";
+}
+}
+
